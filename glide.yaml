@@ -1,0 +1,37 @@
+package: github.com/deis/builder
+ignore:
+- appengine
+- appengine/memcache
+- appengine/datastore
+- appengine/user
+import:
+- package: github.com/kelseyhightower/envconfig
+- package: github.com/gorilla/mux
+  version: e444e69cbd2e2e3e0749a2f3c717cec491552bbf
+- package: github.com/Masterminds/cookoo
+  version: 110a04ff7dc3e7c9b86c1a2413906a16a2bb65cb
+  subpackages:
+  - /log
+  - /safely
+  - /fmt
+- package: golang.org/x/crypto
+  version: f7445b17d61953e333441674c2d11e91ae4559d3
+  subpackages:
+  - /ssh
+- package: gopkg.in/yaml.v2
+  version: eca94c41d994ae2215d455ce578ae6e2dc6ee516
+- package: github.com/pborman/uuid
+- package: github.com/deis/pkg
+  subpackages:
+  - time
+  - log
+- package: github.com/codegangsta/cli
+  version: a65b733b303f0055f8d324d805f393cd3e7a7904
+- package: github.com/aws/aws-sdk-go
+  version: 87b1e60a50b09e4812dee560b33a238f67305804
+  subpackages:
+  - aws
+  - aws/session
+  - service/s3
+- package: k8s.io/kubernetes
+  version: ~1.1

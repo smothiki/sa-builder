@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: deis-builder
+  labels:
+    heritage: deis
+spec:
+  replicas: 1
+  selector:
+    app: deis-builder
+  template:
+    metadata:
+      labels:
+        app: deis-builder
+    spec:
+      containers:
+        - name: deis-builder
+          imagePullPolicy: Always
+          image: smothiki/builder:va1
+          ports:
+            - containerPort: 2223
+            - containerPort: 3000
+          env:
+            - name: BUILDER_FETCHER_PORT
+              value: "3000"
+            - name: BUILDER_SSH_HOST_IP
+              value: "0.0.0.0"
+            - name: BUILDER_SSH_HOST_PORT
+              value: "2223"
+            - name: "EXTERNAL_PORT"
+              value: "2223"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+
+            # not currently running minio with SSL support. see https://github.com/deis/minio/pull/22 for more detail
+            # - name: minio-ssl
+            #   mountPath: /var/run/secrets/object/ssl
+            #   readOnly: true
+
+        # not currently running minio with SSL support. see https://github.com/deis/minio/pull/22 for more detail
+        # - name: minio-ssl
+        #   secret:
+        #     secretName: minio-ssl
