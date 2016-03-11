@@ -1,4 +1,4 @@
-SHORT_NAME ?= builder
+SHORT_NAME ?= sbuilder
 
 # Enable vendor/ directory support.
 export GO15VENDOREXPERIMENT=1
@@ -25,7 +25,7 @@ DEIS_REGISTRY ?= ${DEV_REGISTRY}/
 # Kubernetes-specific information for RC, Service, and Image.
 RC := manifests/deis-${SHORT_NAME}-rc.yaml
 SVC := manifests/deis-${SHORT_NAME}-service.yaml
-IMAGE := smothiki/${SHORT_NAME}:va1
+IMAGE := smothiki/${SHORT_NAME}:va2
 
 TEST_PACKAGES := $(shell ${DEV_ENV_CMD} glide nv)
 

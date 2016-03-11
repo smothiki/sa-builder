@@ -13,7 +13,7 @@ import (
 
 const (
 	slugBuilderName    = "deis-slugbuilder"
-	slugBuilderImage   = "quay.io/deisci/slugbuilder:v2-beta"
+	slugBuilderImage   = "smothiki/slugbuilder:v1.3"
 	dockerBuilderName  = "deis-dockerbuilder"
 	dockerBuilderImage = "quay.io/deisci/dockerbuilder:v2-beta"
 
@@ -35,8 +35,8 @@ func slugBuilderPodName(appName, shortSha string) string {
 	return fmt.Sprintf("slugbuild-%s-%s-%s", appName, shortSha, uid)
 }
 
-func dockerBuilderPod(debug, withAuth bool, name, namespace string, env map[string]interface{}, tarURL, imageName string) *api.Pod {
-	pod := buildPod(debug, withAuth, name, namespace, env)
+func dockerBuilderPod(debug, withAuth bool, name, namespace string, tarURL, imageName string) *api.Pod {
+	pod := buildPod(debug, withAuth, name, namespace)
 
 	pod.Spec.Containers[0].Name = dockerBuilderName
 	pod.Spec.Containers[0].Image = dockerBuilderImage
@@ -64,8 +64,8 @@ func dockerBuilderPod(debug, withAuth bool, name, namespace string, env map[stri
 	return &pod
 }
 
-func slugbuilderPod(debug, withAuth bool, name, namespace string, env map[string]interface{}, tarURL, putURL, buildpackURL string) *api.Pod {
-	pod := buildPod(debug, withAuth, name, namespace, env)
+func slugbuilderPod(debug, withAuth bool, name, namespace string, tarURL, putURL string) *api.Pod {
+	pod := buildPod(debug, withAuth, name, namespace)
 
 	pod.Spec.Containers[0].Name = slugBuilderName
 	pod.Spec.Containers[0].Image = slugBuilderImage
@@ -73,24 +73,21 @@ func slugbuilderPod(debug, withAuth bool, name, namespace string, env map[string
 	addEnvToPod(pod, tarURLKey, tarURL)
 	addEnvToPod(pod, putURLKey, putURL)
 
-	if buildpackURL != "" {
-		addEnvToPod(pod, "BUILDPACK_URL", buildpackURL)
-	}
-
 	return &pod
 }
 
-func slugrunnerPod(debug, withAuth bool, name, namespace string, env map[string]interface{}, putURL string) *api.Pod {
-	pod := buildPod(debug, withAuth, name, namespace, env)
+func slugrunnerPod(debug, withAuth bool, name, namespace string, putURL string) *api.Pod {
+	pod := buildPod(debug, withAuth, name, namespace)
 	pod.Spec.Containers[0].Name = "jaffa"
 	pod.Spec.Containers[0].Image = "quay.io/deisci/slugrunner:v2-beta"
+	pod.Spec.Containers[0].Args = []string{"start", "web"}
 	addEnvToPod(pod, "SLUG_URL", putURL)
 	addEnvToPod(pod, "PORT", "5000")
 	addEnvToPod(pod, "DOCKERIMAGE", "1")
 	return &pod
 }
 
-func buildPod(debug, withAuth bool, name, namespace string, env map[string]interface{}) api.Pod {
+func buildPod(debug, withAuth bool, name, namespace string) api.Pod {
 	pod := api.Pod{
 		Spec: api.PodSpec{
 			RestartPolicy: api.RestartPolicyNever,
@@ -127,15 +124,6 @@ func buildPod(debug, withAuth bool, name, namespace string, env map[string]inter
 				MountPath: "/var/run/secrets/object/store",
 				ReadOnly:  true,
 			},
-		}
-	}
-
-	if len(pod.Spec.Containers) > 0 {
-		for k, v := range env {
-			pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, api.EnvVar{
-				Name:  k,
-				Value: fmt.Sprintf("%v", v),
-			})
 		}
 	}
 

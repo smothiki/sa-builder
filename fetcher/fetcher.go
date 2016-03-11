@@ -24,7 +24,7 @@ func Serve(port int) {
 	rtr.HandleFunc("/git/home/{name}/tar", getTar).Methods("GET")
 	rtr.HandleFunc("/git/home/{name}/slug", getSlug).Methods("GET")
 	rtr.HandleFunc("/git/home/health", health).Methods("GET")
-	rtr.HandleFunc("/git/home/{name}/push", putSlug).Methods("PUT")
+	rtr.HandleFunc("/git/home/{name}/{type}", putSlug).Methods("PUT")
 	hostStr := fmt.Sprintf(":%d", port)
 	http.ListenAndServe(hostStr, rtr)
 }

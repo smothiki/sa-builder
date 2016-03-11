@@ -15,10 +15,9 @@ import (
 	"sync"
 	"text/template"
 
-	"github.com/deis/builder/pkg/controller"
-
 	"github.com/Masterminds/cookoo"
 	"github.com/Masterminds/cookoo/log"
+	"github.com/deis/sa-builder/pkg/sshd"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -56,26 +55,21 @@ var preReceiveHookTpl = template.Must(template.New("hooks").Parse(preReceiveHook
 // Returns:
 // 	- nothing
 func Receive(c cookoo.Context, p *cookoo.Params) (interface{}, cookoo.Interrupt) {
-	if ok, z := p.Requires("channel", "request", "userinfo"); !ok {
+	if ok, z := p.Requires("channel", "request"); !ok {
 		return nil, fmt.Errorf("Missing requirements %q", z)
 	}
 	repoName := p.Get("repoName", "").(string)
 	operation := p.Get("operation", "").(string)
 	channel := p.Get("channel", nil).(ssh.Channel)
 	gitHome := p.Get("gitHome", "/home/git").(string)
-	userinfo := p.Get("userinfo", nil).(*controller.UserInfo)
 
-	log.Debugf(c, "receiving git repo name: %s, operation: %s, fingerprint: %s, user: %s", repoName, operation, userinfo.Fingerprint, userinfo.Username)
+	log.Debugf(c, "receiving git repo name: %s, operation: %s, fingerprint: %s, user: %s", repoName, operation, sshd.Fingerprint(), "builder")
 
 	repo, err := cleanRepoName(repoName)
 	if err != nil {
 		log.Warnf(c, "Illegal repo name: %s.", err)
 		channel.Stderr().Write([]byte("No repo given"))
 		return nil, err
-	}
-
-	if ok := checkIfAllowed(repo, userinfo.Apps); !ok {
-		return nil, fmt.Sprintf("The user %v has no permission in application %v", userinfo.Username, repo)
 	}
 
 	repo += ".git"
@@ -102,9 +96,9 @@ func Receive(c cookoo.Context, p *cookoo.Params) (interface{}, cookoo.Interrupt)
 
 	cmd.Dir = gitHome
 	cmd.Env = []string{
-		fmt.Sprintf("RECEIVE_USER=%s", userinfo.Username),
+		fmt.Sprintf("RECEIVE_USER=%s", "builder"),
 		fmt.Sprintf("RECEIVE_REPO=%s", repo),
-		fmt.Sprintf("RECEIVE_FINGERPRINT=%s", userinfo.Fingerprint),
+		fmt.Sprintf("RECEIVE_FINGERPRINT=%s", sshd.Fingerprint()),
 		fmt.Sprintf("SSH_ORIGINAL_COMMAND=%s '%s'", operation, repo),
 		fmt.Sprintf("SSH_CONNECTION=%s", c.Get("SSH_CONNECTION", "0 0 0 0").(string)),
 	}

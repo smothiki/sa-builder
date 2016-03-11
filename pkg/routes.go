@@ -103,7 +103,6 @@ func routes(reg *cookoo.Registry) {
 					{Name: "operation", From: "cxt:operation"},
 					{Name: "repoName", From: "cxt:repository"},
 					{Name: "permissions", From: "cxt:authN"},
-					{Name: "userinfo", From: "cxt:userinfo"},
 				},
 			},
 		},

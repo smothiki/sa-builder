@@ -16,7 +16,7 @@ spec:
       containers:
         - name: deis-builder
           imagePullPolicy: Always
-          image: smothiki/builder:va1
+          image: smothiki/sbuilder:va2
           ports:
             - containerPort: 2223
             - containerPort: 3000
@@ -30,9 +30,10 @@ spec:
             - name: "EXTERNAL_PORT"
               value: "2223"
             - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
+              value: "default" 
+              # valueFrom:
+              #   fieldRef:
+              #     fieldPath: metadata.namespace
 
             # not currently running minio with SSL support. see https://github.com/deis/minio/pull/22 for more detail
             # - name: minio-ssl

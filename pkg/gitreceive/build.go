@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/deis/pkg/log"
 	"github.com/deis/sa-builder/pkg"
 	"github.com/deis/sa-builder/pkg/gitreceive/git"
@@ -20,7 +19,6 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 // repoCmd returns exec.Command(first, others...) with its current working directory repoDir
@@ -41,7 +39,7 @@ func run(cmd *exec.Cmd) error {
 	return cmd.Run()
 }
 
-func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey, rawGitSha string) error {
+func build(conf *Config, kubeClient *client.Client, rawGitSha string) error {
 	repo := conf.Repository
 	gitSha, err := git.NewSha(rawGitSha)
 	if err != nil {
@@ -57,27 +55,13 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 	if err := os.MkdirAll(buildDir, os.ModeDir); err != nil {
 		return fmt.Errorf("making the build directory %s (%s)", buildDir, err)
 	}
-
-	tmpDir, err := ioutil.TempDir(buildDir, "tmp")
+	tmpDir := buildDir + gitSha.Short()
+	err = os.MkdirAll(tmpDir, 0777)
 	if err != nil {
 		return fmt.Errorf("unable to create tmpdir %s (%s)", buildDir, err)
 	}
 
-	slugBuilderInfo := storage.NewSlugBuilderInfo(s3Client.Endpoint, appName, slugName, gitSha)
-
-	// Get the application config from the controller, so we can check for a custom buildpack URL
-	appConf, err := getAppConfig(conf, builderKey, conf.Username, appName)
-	if err != nil {
-		return fmt.Errorf("getting app config for %s (%s)", appName, err)
-	}
-	log.Debug("got the following config back for app %s: %+v", appName, *appConf)
-	var buildPackURL string
-	if buildPackURLInterface, ok := appConf.Values["BUILDPACK_URL"]; ok {
-		if bpStr, ok := buildPackURLInterface.(string); ok {
-			log.Debug("found custom buildpack URL %s", bpStr)
-			buildPackURL = bpStr
-		}
-	}
+	slugBuilderInfo := storage.NewSlugBuilderInfo(appName, slugName, gitSha)
 
 	// build a tarball from the new objects
 	appTgz := fmt.Sprintf("%s.tar.gz", appName)
@@ -87,7 +71,6 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 	if err := run(gitArchiveCmd); err != nil {
 		return fmt.Errorf("running %s (%s)", strings.Join(gitArchiveCmd.Args, " "), err)
 	}
-	absAppTgz := fmt.Sprintf("%s/%s", repoDir, appTgz)
 
 	// untar the archive into the temp dir
 	tarCmd := repoCmd(repoDir, "tar", "-xzf", appTgz, "-C", fmt.Sprintf("%s/", tmpDir))
@@ -111,33 +94,15 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 		}
 	}
 
-	bucketName := "git"
-	if err := storage.CreateBucket(s3Client, bucketName); err != nil {
-		log.Warn("create bucket error: %+v", err)
-	}
-
-	appTgzReader, err := os.Open(absAppTgz)
-	if err != nil {
-		return fmt.Errorf("opening %s for read (%s)", appTgz, err)
-	}
-
-	log.Debug("Uploading tar to %s/%s/%s", s3Client.Endpoint, bucketName, slugBuilderInfo.TarKey())
-	if err := storage.UploadObject(s3Client, bucketName, slugBuilderInfo.TarKey(), appTgzReader); err != nil {
-		return fmt.Errorf("uploading %s to %s/%s (%v)", absAppTgz, bucketName, slugBuilderInfo.TarKey(), err)
-	}
-
-	creds := storage.CredsOK()
-
 	var pod *api.Pod
 	var buildPodName string
 	if usingDockerfile {
 		buildPodName = dockerBuilderPodName(appName, gitSha.Short())
 		pod = dockerBuilderPod(
 			conf.Debug,
-			creds,
+			false,
 			buildPodName,
 			conf.PodNamespace,
-			appConf.Values,
 			slugBuilderInfo.TarURL(),
 			slugName,
 		)
@@ -145,13 +110,11 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 		buildPodName = slugBuilderPodName(appName, gitSha.Short())
 		pod = slugbuilderPod(
 			conf.Debug,
-			creds,
+			false,
 			buildPodName,
 			conf.PodNamespace,
-			appConf.Values,
 			slugBuilderInfo.TarURL(),
 			slugBuilderInfo.PushURL(),
-			buildPackURL,
 		)
 	}
 
@@ -210,30 +173,28 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 	}
 
 	// poll the s3 server to ensure the slug exists
-	err = wait.PollImmediate(conf.ObjectStorageTickDuration(), conf.ObjectStorageWaitDuration(), func() (bool, error) {
-		exists, err := storage.ObjectExists(s3Client, bucketName, slugBuilderInfo.PushKey())
-		if err != nil {
-			return false, fmt.Errorf("Checking if object %s/%s exists (%s)", bucketName, slugBuilderInfo.PushKey(), err)
-		}
-		return exists, nil
-	})
+	buildPodName = slugBuilderPodName(appName+"run", gitSha.Short())
+	pod = slugrunnerPod(
+		conf.Debug,
+		false,
+		buildPodName,
+		conf.PodNamespace,
+		slugBuilderInfo.SlugURL(),
+	)
 
+	newPod, err = podsInterface.Create(pod)
 	if err != nil {
-		return fmt.Errorf("Timed out waiting for object in storage. Aborting build...")
+		return fmt.Errorf("creating builder pod (%s)", err)
 	}
+
+	if err := waitForPod(kubeClient, newPod.Namespace, newPod.Name, conf.BuilderPodTickDuration(), conf.BuilderPodWaitDuration()); err != nil {
+		return fmt.Errorf("watching events for builder pod startup (%s)", err)
+	}
+
 	log.Info("Build complete.")
 	log.Info("Launching app.")
 	log.Info("Launching...")
 
-	buildPodName = slugBuilderPodName(appName, gitSha.Short()+"run")
-	pod = slugrunnerPod(
-		conf.Debug,
-		creds,
-		buildPodName,
-		conf.PodNamespace,
-		appConf.Values,
-		slugBuilderInfo.PushURL()+"/slug.tgz",
-	)
 	// 	buildHook := &pkg.BuildHook{
 	// 		Sha:         gitSha.Short(),
 	// 		ReceiveUser: conf.Username,
@@ -261,11 +222,12 @@ func build(conf *Config, s3Client *s3.S3, kubeClient *client.Client, builderKey,
 	// 	log.Info("Use 'deis open' to view this application in your browser\n")
 	// 	log.Info("To learn more, use 'deis help' or visit http://deis.io\n")
 	//
-	// 	gcCmd := repoCmd(repoDir, "git", "gc")
-	// 	if err := run(gcCmd); err != nil {
-	// 		return fmt.Errorf("cleaning up the repository with %s (%s)", strings.Join(gcCmd.Args, " "), err)
-	// 	}
-	//
+
+	gcCmd := repoCmd(repoDir, "git", "gc")
+	if err := run(gcCmd); err != nil {
+		return fmt.Errorf("cleaning up the repository with %s (%s)", strings.Join(gcCmd.Args, " "), err)
+	}
+
 	return nil
 }
 

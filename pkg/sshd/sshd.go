@@ -1,7 +1,9 @@
 package sshd
 
 import (
+	"crypto/md5"
 	"crypto/subtle"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -71,7 +73,10 @@ func AuthKey(c cookoo.Context, p *cookoo.Params) (interface{}, cookoo.Interrupt)
 	log.Debugf(c, "Starting ssh authentication")
 	key := p.Get("key", nil).(ssh.PublicKey)
 	allowedkey, _ := ioutil.ReadFile("/etc/deistest.pub")
-	allowed, _ := ssh.ParsePublicKey([]byte(allowedkey))
+	allowed, _, _, _, err := ssh.ParseAuthorizedKey(allowedkey)
+	fmt.Println(err)
+	fmt.Println(allowed)
+	fmt.Println(key)
 	if compareKeys(key, allowed) {
 		perm := &ssh.Permissions{
 			Extensions: map[string]string{
@@ -131,4 +136,28 @@ func GenSSHKeys(c cookoo.Context, p *cookoo.Params) (interface{}, cookoo.Interru
 		return nil, err
 	}
 	return nil, nil
+}
+
+// Fingerprint generates a colon-separated fingerprint string from a public key.
+func Fingerprint() string {
+	allowedkey, _ := ioutil.ReadFile("/etc/deistest.pub")
+	key, _, _, _, err := ssh.ParseAuthorizedKey(allowedkey)
+	fmt.Println(err)
+	hash := md5.Sum(key.Marshal())
+	buf := make([]byte, hex.EncodedLen(len(hash)))
+	hex.Encode(buf, hash[:])
+	// We need this in colon notation:
+	fp := make([]byte, len(buf)+15)
+
+	i, j := 0, 0
+	for ; i < len(buf); i++ {
+		if i > 0 && i%2 == 0 {
+			fp[j] = ':'
+			j++
+		}
+		fp[j] = buf[i]
+		j++
+	}
+
+	return string(fp)
 }

@@ -12,10 +12,10 @@ const (
 
 type Config struct {
 	// k8s service discovery env vars
-	WorkflowHost string `envconfig:"DEIS_WORKFLOW_SERVICE_HOST" required:"true"`
-	WorkflowPort string `envconfig:"DEIS_WORKFLOW_SERVICE_PORT" required:"true"`
-	RegistryHost string `envconfig:"DEIS_REGISTRY_SERVICE_HOST" required:"true"`
-	RegistryPort string `envconfig:"DEIS_REGISTRY_SERVICE_PORT" required:"true"`
+	WorkflowHost string `envconfig:"DEIS_WORKFLOW_SERVICE_HOST" default:"localhost"`
+	WorkflowPort string `envconfig:"DEIS_WORKFLOW_SERVICE_PORT" default:"80"`
+	RegistryHost string `envconfig:"DEIS_REGISTRY_SERVICE_HOST" default:"localhost"`
+	RegistryPort string `envconfig:"DEIS_REGISTRY_SERVICE_PORT" default:"5000"`
 
 	GitHome                       string `envconfig:"GIT_HOME" required:"true"`
 	SSHConnection                 string `envconfig:"SSH_CONNECTION" required:"true"`
